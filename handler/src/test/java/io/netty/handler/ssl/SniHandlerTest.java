@@ -339,6 +339,8 @@ public class SniHandlerTest {
         SslContext sniContext = makeSslContext(provider, true);
         final SslContext clientContext = makeSslClientContext(provider, true);
         try {
+            final CountDownLatch serverApnCtxLatch = new CountDownLatch(1);
+            final CountDownLatch clientApnCtxLatch = new CountDownLatch(1);
             final CountDownLatch serverApnDoneLatch = new CountDownLatch(1);
             final CountDownLatch clientApnDoneLatch = new CountDownLatch(1);
 
@@ -363,6 +365,9 @@ public class SniHandlerTest {
                         p.addLast(new ApplicationProtocolNegotiationHandler("foo") {
                             @Override
                             protected void configurePipeline(ChannelHandlerContext ctx, String protocol) {
+                                // addresses issue #9131
+                                if (ctx.pipeline().context(this) != null)
+                                    serverApnCtxLatch.countDown();
                                 serverApnDoneLatch.countDown();
                             }
                         });
@@ -381,6 +386,9 @@ public class SniHandlerTest {
                         ch.pipeline().addLast(new ApplicationProtocolNegotiationHandler("foo") {
                             @Override
                             protected void configurePipeline(ChannelHandlerContext ctx, String protocol) {
+                                // addresses issue #9131
+                                if (ctx.pipeline().context(this) != null)
+                                    clientApnCtxLatch.countDown();
                                 clientApnDoneLatch.countDown();
                             }
                         });
@@ -395,6 +403,8 @@ public class SniHandlerTest {
 
                 assertTrue(serverApnDoneLatch.await(5, TimeUnit.SECONDS));
                 assertTrue(clientApnDoneLatch.await(5, TimeUnit.SECONDS));
+                assertEquals(0, serverApnCtxLatch.getCount());
+                assertEquals(0, clientApnCtxLatch.getCount());
                 assertThat(handler.hostname(), is("sni.fake.site"));
                 assertThat(handler.sslContext(), is(sniContext));
             } finally {
